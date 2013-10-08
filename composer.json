@@ -1,5 +1,7 @@
 {
     "name": "bangpound/drupal-kernel",
+    "description": "Symfony HTTP kernel wrapper around Drupal 7",
+    "license": "MIT",
     "require": {
         "symfony/http-kernel": "~2.3",
         "symfony/process": "~2.3"
