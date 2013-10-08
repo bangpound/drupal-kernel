@@ -32,7 +32,9 @@ Just add `bangpound/drupal-kernel` to your `composer.json` file.
 
 ````json
 {
-    "require": "bangpound/drupal-kernel"
+    "require": {
+        "bangpound/drupal-kernel": "dev-master"
+    }
 }
 ````
 
