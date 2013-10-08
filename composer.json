@@ -1,0 +1,42 @@
+{
+    "name": "bangpound/drupal-kernel",
+    "require": {
+        "symfony/http-kernel": "~2.3",
+        "symfony/process": "~2.3"
+    },
+    "require-dev": {
+        "drupal/drupal": "7.23"
+    },
+    "autoload": {
+        "psr-0": {
+            "Bangpound\\Drupal\\": "src/"
+        }
+    },
+    "target-dir": "Bangpound/Drupal",
+    "authors": [
+        {
+            "name": "Benjamin Doherty",
+            "email": "bjd@bangpound.org"
+        }
+    ],
+    "repositories": [
+        {
+            "type": "package",
+            "package": {
+                "name": "drupal/drupal",
+                "version": "7.23",
+                "dist": {
+                    "url": "http://ftp.drupal.org/files/projects/drupal-7.23.tar.gz",
+                    "type": "tar"
+                },
+                "source": {
+                    "url": "http://git.drupal.org/project/drupal.git",
+                    "type": "git",
+                    "reference": "7.x"
+                },
+                "autoload": {
+                }
+            }
+        }
+    ]
+}
