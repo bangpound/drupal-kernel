@@ -3,6 +3,7 @@
     "description": "Symfony HTTP kernel wrapper around Drupal 7",
     "license": "MIT",
     "require": {
+        "symfony/class-loader": "~2.3",
         "symfony/http-kernel": "~2.3",
         "symfony/process": "~2.3"
     },
