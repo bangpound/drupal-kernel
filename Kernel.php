@@ -59,19 +59,18 @@ class Kernel extends HttpKernel
      */
     public function handle(Request $request, $type = HttpKernelInterface::MASTER_REQUEST, $catch = true)
     {
-        $drupal = $request->duplicate();
-        if (count($drupal->files)) {
+        if (count($request->files)) {
             $boundary = $this->getMimeBoundary();
-            $drupal->headers->set('Content-Type', 'multipart/form-data; boundary='.$boundary);
+            $request->headers->set('Content-Type', 'multipart/form-data; boundary='.$boundary);
         }
 
-        $drupal->query->set('q', ltrim($drupal->getPathInfo(), '/'));
-        $drupal->server->set('REQUEST_URI', $drupal->getPathInfo());
-        $drupal->server->set('HTTP_HOST', 'localhost');
-        $drupal->server->set('SCRIPT_NAME', '/index.php');
-        $drupal->server->set('SERVER_SOFTWARE', 'Symfony');
+        $request->query->set('q', ltrim($request->getPathInfo(), '/'));
+        $request->server->set('REQUEST_URI', $request->getPathInfo());
+        $request->server->set('HTTP_HOST', 'localhost');
+        $request->server->set('SCRIPT_NAME', '/index.php');
+        $request->server->set('SERVER_SOFTWARE', 'Symfony');
 
-        $processOutput = $this->doRequestInProcess($drupal);
+        $processOutput = $this->doRequestInProcess($request);
 
         list($headerList, $body) = explode("\r\n\r\n", $processOutput, 2);
         $headerMap = $this->getHeaderMap($headerList);
