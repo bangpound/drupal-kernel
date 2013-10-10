@@ -2,24 +2,42 @@
 
 namespace Bangpound\Drupal;
 
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\Cookie;
+use Symfony\Component\HttpKernel\Controller\ControllerResolverInterface;
+use Symfony\Component\HttpKernel\HttpKernel;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\Process\PhpProcess;
 
-class DrupalKernel implements HttpKernelInterface
+class Kernel extends HttpKernel
 {
     private $rootDir;
     private $phpCgiBin;
-    private $autoloadPath;
 
-    public function __construct($loader, $rootDir, $phpCgiBin = null)
+    /**
+     * Constructor
+     *
+     * @param EventDispatcherInterface    $dispatcher An EventDispatcherInterface instance
+     * @param ControllerResolverInterface $resolver   A ControllerResolverInterface instance
+     *
+     * @api
+     */
+    public function __construct(EventDispatcherInterface $dispatcher, ControllerResolverInterface $resolver)
+    {
+        $this->dispatcher = $dispatcher;
+        $this->resolver = $resolver;
+    }
+
+    public function setRootDir($rootDir)
     {
         $this->rootDir = realpath($rootDir);
+    }
+
+    public function setPhpCgiBin($phpCgiBin)
+    {
         $this->phpCgiBin = $phpCgiBin ?: 'php-cgi';
-        $r = new \ReflectionClass($loader);
-        $this->autoloadPath = realpath(dirname($r->getFileName()) .  DIRECTORY_SEPARATOR .'..' . DIRECTORY_SEPARATOR . 'autoload.php');
     }
 
     /**
@@ -39,27 +57,21 @@ class DrupalKernel implements HttpKernelInterface
      *
      * @api
      */
-    public function handle(Request $request, $type = self::MASTER_REQUEST, $catch = true)
+    public function handle(Request $request, $type = HttpKernelInterface::MASTER_REQUEST, $catch = true)
     {
-        $drupal_request = $request->duplicate();
-        if (count($drupal_request->files)) {
+        $drupal = $request->duplicate();
+        if (count($drupal->files)) {
             $boundary = $this->getMimeBoundary();
-            $drupal_request->headers->set('Content-Type', 'multipart/form-data; boundary='.$boundary);
+            $drupal->headers->set('Content-Type', 'multipart/form-data; boundary='.$boundary);
         }
 
-        $drupal_request->query->set('q', ltrim($drupal_request->getPathInfo(), '/'));
-        $drupal_request->server->set('REQUEST_URI', $drupal_request->getPathInfo());
-        $drupal_request->server->set('HTTP_HOST', 'localhost');
-        $drupal_request->server->set('SCRIPT_NAME', '/index.php');
-        $script = $this->getScript($drupal_request);
+        $drupal->query->set('q', ltrim($drupal->getPathInfo(), '/'));
+        $drupal->server->set('REQUEST_URI', $drupal->getPathInfo());
+        $drupal->server->set('HTTP_HOST', 'localhost');
+        $drupal->server->set('SCRIPT_NAME', '/index.php');
+        $drupal->server->set('SERVER_SOFTWARE', 'Symfony');
 
-        $process = new PhpProcess($script);
-        $process->setPhpBinary('php-cgi');
-        $process->setWorkingDirectory($this->rootDir);
-        $process->start();
-        $process->wait();
-
-        $processOutput = $process->getOutput();
+        $processOutput = $this->doRequestInProcess($drupal);
 
         list($headerList, $body) = explode("\r\n\r\n", $processOutput, 2);
         $headerMap = $this->getHeaderMap($headerList);
@@ -178,6 +190,33 @@ class DrupalKernel implements HttpKernelInterface
     }
 
     /**
+     * Makes a request in another process.
+     *
+     * @param object $request An origin request instance
+     *
+     * @return object An origin response instance
+     *
+     * @throws \RuntimeException When processing returns exit code
+     * @see \Symfony\Component\BrowserKit\Client
+     * @see \Symfony\Component\HttpKernel\Client
+     */
+    protected function doRequestInProcess($request)
+    {
+        // We set the TMPDIR (for Macs) and TEMP (for Windows), because on these platforms the temp directory changes based on the user.
+        $process = new PhpProcess($this->getScript($request), $this->rootDir, array('TMPDIR' => sys_get_temp_dir(), 'TEMP' => sys_get_temp_dir()));
+        $process->setPhpBinary('php-cgi');
+        $process->run();
+
+        // I think the second hcheck validates that the response is serialized, but that's not what we want here.
+        //if (!$process->isSuccessful() || !preg_match('/^O\:\d+\:/', $process->getOutput())) {
+        if (!$process->isSuccessful()) {
+            throw new \RuntimeException(sprintf('OUTPUT: %s ERROR OUTPUT: %s', $process->getOutput(), $process->getErrorOutput()));
+        }
+
+        return $process->getOutput();
+    }
+
+    /**
      * Returns the script to execute when the request must be insulated.
      *
      * @param Request $request A Request instance
@@ -186,20 +225,42 @@ class DrupalKernel implements HttpKernelInterface
      */
     protected function getScript($request)
     {
-        $serialized_request = str_replace("'", "\\'", serialize($request));
-        $autoload = str_replace("'", "\\", $this->autoloadPath);
+        $request = str_replace("'", "\\'", serialize($request));
 
-        return <<<EOF
+        $r = new \ReflectionClass('\\Symfony\\Component\\ClassLoader\\ClassLoader');
+        $requirePath = str_replace("'", "\\'", $r->getFileName());
+        $symfonyPath = str_replace("'", "\\'", realpath(dirname($r->getFileName()) .'/../../../'));
+
+        $code = <<<EOF
 <?php
-require '$autoload';
-\$request = unserialize('$serialized_request');
 
+require_once '$requirePath';
+
+\$loader = new Symfony\Component\ClassLoader\ClassLoader();
+\$loader->addPrefix('Symfony', '$symfonyPath');
+\$loader->register();
+
+\$request = unserialize('$request');
+\$request->overrideGlobals();
+EOF;
+
+        return $code.$this->getBootstrapScript().$this->getHandleScript();
+    }
+
+    protected function getBootstrapScript()
+    {
+        return <<<'EOF'
 define('DRUPAL_ROOT', getcwd());
-include_once DRUPAL_ROOT . '/includes/bootstrap.inc';
 
-\$app = new \Bangpound\Drupal\DrupalController();
-\$response = \$app->contentAction(\$request);
-echo \$response;
+require_once DRUPAL_ROOT . '/includes/bootstrap.inc';
+drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);
+EOF;
+    }
+
+    protected function getHandleScript()
+    {
+        return <<<'EOF'
+menu_execute_active_handler(null, true);
 EOF;
     }
 }
