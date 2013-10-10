@@ -1,5 +1,5 @@
-DrupalKernel and DrupalController
-=================================
+Drupal Kernel
+=============
 
 These two experimental classes wrap Drupal 7 in a Symfony HTTP kernel.
 
@@ -10,9 +10,8 @@ Symfony classes.
 
 Before Drupal is bootstrapped, the injected request is unserialized
 and those values replace the globals in the Drupal process. The
-Drupal process is operated by something resembling a controller
-(DrupalController). The Drupal request is handled and the response
-is echoed as PHP CGI output.
+Drupal process is bootstrapped and the Drupal request is handled and
+the response is echoed as PHP CGI output.
 
 The kernel which opened the process captures the output, parses the
 headers and returns a Symfony response object.
@@ -45,7 +44,7 @@ Then create a front controller named index.php with this code in it:
 
 $loader = require __DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR .'vendor'. DIRECTORY_SEPARATOR .'autoload.php';
 
-$app = new \Bangpound\Drupal\DrupalKernel($loader, __DIR__ .'/../vendor/drupal/drupal');
+$app = new \Bangpound\Drupal\Kernel($loader, __DIR__ .'/../vendor/drupal/drupal');
 
 $request = \Symfony\Component\HttpFoundation\Request::createFromGlobals();
 $response = $app->handle($request);
